@@ -70,7 +70,7 @@ async def handle_text(message: types.Message):
     await bot.send_chat_action(chat_id=message.chat.id, action="typing")
     try:
         response = await client.chat.completions.create(
-            model="meta-llama/llama-3.1-8b-instruct:free",
+            model="mistralai/mistral-7b-instruct:free",
             messages=user_chats[user_id]
         )
         bot_reply = response.choices[0].message.content
