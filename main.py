@@ -68,11 +68,11 @@ def get_new_history():
 # ==========================================
 # 3. ЛОГИКА АДМИНА
 # ==========================================
-@dp.message(Command("setrole"))
+
 # ==========================================
 # НОВЫЙ БЛОК: КРАТКИЙ ПЕРЕСКАЗ ЧАТА
 # ==========================================
-@dp.message(Command("summary"))
+@dp.message(F.text.lower().contains("релоку пересказ")) 
 async def cmd_summary(message: types.Message):
     chat_id = message.chat.id
     
@@ -109,7 +109,7 @@ async def cmd_summary(message: types.Message):
         
     except Exception as e:
         await message.reply(f"Не удалось сделать пересказ, возможно сервер перегружен: `{e}`", parse_mode="Markdown")
-        
+@dp.message(Command("setrole"))        
 async def cmd_setrole(message: types.Message):
     global current_system_prompt
     if message.from_user.id != ADMIN_ID:
