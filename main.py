@@ -31,13 +31,13 @@ def keep_alive():
 threading.Thread(target=keep_alive, daemon=True).start()
 
 # ==========================================
-# 2. НАСТРОЙКИ (ВСТАВЬ СВОИ ДАННЫЕ!)
+# 2. НАСТРОЙКИ
 # ==========================================
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
 
 ADMIN_ID = 8503497111           # Твой ID из Телеграма
-ALLOWED_GROUP_ID = -1004373810797# ID твоей группы (с минусом в начале!)
+ALLOWED_GROUP_ID = -1004373810797# ID твоей группы
 
 client = AsyncOpenAI(
     base_url="https://openrouter.ai/api/v1",
@@ -59,38 +59,30 @@ current_system_prompt = """ Ты [Не особо общительный, спо
 4. Если тебя просят написать код, ты сначала ворчишь, а потом пишешь.
 5. Отвечай не слишком длинно, как обычный человек в чате. """
 
-# Теперь память привязана к чатам (группе), а не к отдельным юзерам
 chat_memory = {}
 
 def get_new_history():
     return [{"role": "system", "content": current_system_prompt}]
 
 # ==========================================
-# 3. ЛОГИКА АДМИНА
+# 3. ЛОГИКА АДМИНА И СПЕЦ-ФУНКЦИИ
 # ==========================================
 
-# ==========================================
-# НОВЫЙ БЛОК: КРАТКИЙ ПЕРЕСКАЗ ЧАТА
-# ==========================================
+# КРАТКИЙ ПЕРЕСКАЗ ЧАТА
 @dp.message(F.text.lower().contains("релоку пересказ")) 
 async def cmd_summary(message: types.Message):
     chat_id = message.chat.id
     
-    # Проверка прав (работает только в твоей группе или в личке)
     if chat_id != ALLOWED_GROUP_ID and chat_id != ADMIN_ID:
         return
         
-    # Проверяем, есть ли вообще что пересказывать (нужно хотя бы пару сообщений)
     if chat_id not in chat_memory or len(chat_memory[chat_id]) < 5:
         await message.reply("Мы еще недостаточно пообщались, чтобы я делал пересказ. Напишите еще что-нибудь!")
         return
         
     await bot.send_chat_action(chat_id=chat_id, action="typing")
-    
-    # Берем последние 40 сообщений из памяти чата (чтобы не перегрузить токенами)
     recent_history = chat_memory[chat_id][-40:]
     
-    # Формируем отдельный запрос специально для пересказа
     summary_request = [
         {"role": "system", "content": "Ты строгий и четкий ассистент. Твоя задача — прочитать историю чата и сделать ОЧЕНЬ КРАТКИЙ пересказ (выжимку) того, что обсуждали люди. Выдели главные темы. Пиши обычным текстом, без отыгрыша ролей."}
     ]
@@ -98,17 +90,58 @@ async def cmd_summary(message: types.Message):
     summary_request.append({"role": "user", "content": "Сделай краткий пересказ этого диалога в 2-3 предложениях."})
     
     try:
-        # Отправляем этот скрытый запрос нейросети
         response = await client.chat.completions.create(
             model="openrouter/free",
             messages=summary_request
         )
-        
         summary_text = response.choices[0].message.content
         await message.reply(f"📝 **Краткий пересказ последних событий:**\n\n{summary_text}", parse_mode="Markdown")
-        
     except Exception as e:
         await message.reply(f"Не удалось сделать пересказ, возможно сервер перегружен: `{e}`", parse_mode="Markdown")
+
+# ПОИСК НЕАКТИВА (ДОКОПАТЬСЯ ДО МОЛЧУНА)
+@dp.message(F.text.lower().contains("поиск неактива"))
+async def cmd_find_inactive(message: types.Message):
+    chat_id = message.chat.id
+    
+    if chat_id != ALLOWED_GROUP_ID and chat_id != ADMIN_ID:
+        return
+
+    if chat_id not in chat_memory or len(chat_memory[chat_id]) < 5:
+        await message.reply("Я пока не запомнил, кто тут общается. Пусть напишут хоть пару слов!")
+        return
+
+    await bot.send_chat_action(chat_id=chat_id, action="typing")
+    
+    user_last_seen = {}
+    for index, msg in enumerate(chat_memory[chat_id]):
+        if msg["role"] == "user" and " сказал:" in msg["content"]:
+            name = msg["content"].split(" сказал:")[0]
+            user_last_seen[name] = index
+            
+    if len(user_last_seen) < 2:
+        await message.reply("Тут кроме тебя никого нет, до кого мне докапываться?")
+        return
+        
+    inactive_user = min(user_last_seen, key=user_last_seen.get)
+    
+    callout_request = [
+        {"role": "system", "content": current_system_prompt},
+        {"role": "user", "content": f"Пользователь по имени {inactive_user} давно ничего не писал в чат и сидит в тихаря. Напиши короткое сообщение, чтобы докопаться до него, вытянуть на разговор и подколоть. Используй свой стиль!"}
+    ]
+    
+    try:
+        response = await client.chat.completions.create(
+            model="openrouter/free",
+            messages=callout_request
+        )
+        bot_reply = response.choices[0].message.content
+        
+        await message.answer(bot_reply)
+        await message.answer_sticker("CAACAgIAAxkBAAOAapm3agABKoUK7ewb_a-iNcKOv_KKAAJjsgACSliASLSoaMJ-7LSbPQQ")
+    except Exception as e:
+        await message.reply(f"Не удалось докопаться, ошибка: `{e}`", parse_mode="Markdown")
+
 @dp.message(Command("setrole"))        
 async def cmd_setrole(message: types.Message):
     global current_system_prompt
@@ -122,7 +155,6 @@ async def cmd_setrole(message: types.Message):
     chat_memory.clear()
     await message.reply(f"Успешно! Моя новая базовая установка:\n{current_system_prompt}")
 
-# СЕКРЕТНАЯ ФУНКЦИЯ: Узнаем ID стикеров
 @dp.message(F.sticker)
 async def handle_sticker(message: types.Message):
     if message.chat.id == ADMIN_ID:
@@ -136,29 +168,21 @@ async def cmd_start(message: types.Message):
     chat_id = message.chat.id
     chat_memory[chat_id] = get_new_history()
     await message.answer("Бот запущен!")
-# ==========================================
-# НОВЫЙ БЛОК: ПРИВЕТСТВИЕ НОВИЧКОВ
-# ==========================================
+
+# ПРИВЕТСТВИЕ НОВИЧКОВ
 @dp.message(F.new_chat_members)
 async def welcome_new_member(message: types.Message):
     chat_id = message.chat.id
-    
-    # Проверка на чужие группы
     if chat_id != ALLOWED_GROUP_ID and chat_id != ADMIN_ID:
         return
-
     if chat_id not in chat_memory:
         chat_memory[chat_id] = get_new_history()
 
-    # Перебираем всех, кто зашел (иногда заходят по несколько человек)
     for new_member in message.new_chat_members:
-        # Если бот случайно добавил сам себя, он не должен здороваться с собой
         if new_member.id == bot.id:
             continue
             
         user_name = new_member.first_name
-        
-        # Формируем скрытое системное сообщение для нейросети
         prompt = f"[СИСТЕМНОЕ УВЕДОМЛЕНИЕ]: В чат только что зашел новый участник по имени {user_name}. Поприветствуй его в своем стиле!"
         chat_memory[chat_id].append({"role": "user", "content": prompt})
         
@@ -171,47 +195,49 @@ async def welcome_new_member(message: types.Message):
             )
             bot_reply = response.choices[0].message.content
             chat_memory[chat_id].append({"role": "assistant", "content": bot_reply})
-            
-            # Бот отвечает прямо на сообщение о вступлении
             await message.reply(bot_reply)
         except Exception as e:
             chat_memory[chat_id].pop()
             print(f"Ошибка при приветствии: {e}")
     
+# ОСНОВНОЙ ОБРАБОТЧИК ТЕКСТА
 @dp.message(F.text)
 async def handle_text(message: types.Message):
     chat_id = message.chat.id
     user_name = message.from_user.first_name
     
-    # ПРОВЕРКА №1: Защита от чужих групп.
+    # 1. Защита от чужих групп
     if chat_id != ALLOWED_GROUP_ID and chat_id != ADMIN_ID:
         if message.chat.type in ['group', 'supergroup']:
             await message.answer("Мой создатель запретил мне работать в чужих группах. Прощайте!")
             await bot.leave_chat(chat_id)
         return
 
-            # ==========================================
-    # БЛОК: ФИЛЬТР ВНИМАНИЯ (ЭКОНОМИЯ ТОКЕНОВ)
-    # ==========================================
+    # 2. ЗАПОМИНАЕМ СООБЩЕНИЕ ДО ТОГО КАК СРАБОТАЕТ ФИЛЬТР
+    if chat_id not in chat_memory:
+        chat_memory[chat_id] = get_new_history()
+        
+    formatted_text = f"{user_name} сказал: {message.text}"
+    chat_memory[chat_id].append({"role": "user", "content": formatted_text})
+    
+    # Защита от переполнения: системный промпт + 50 последних сообщений
+    if len(chat_memory[chat_id]) > 51:
+        chat_memory[chat_id] = [chat_memory[chat_id][0]] + chat_memory[chat_id][-50:]
+
+    # 3. ФИЛЬТР ВНИМАНИЯ
     should_reply = False
     text_lower = message.text.lower()
     
-    # 1. В личке с админом отвечаем всегда
     if chat_id == ADMIN_ID:
         should_reply = True
-    # 2. Если кто-то сделал реплай (ответил) на сообщение самого бота
     elif message.reply_to_message and message.reply_to_message.from_user.id == bot.id:
         should_reply = True
-    # 3. Если бота тегнули в чате через @
-    elif "@Relokus_bot" in text_lower: # <-- Не забудь оставить свой юзернейм!
+    elif "@Relokus_bot" in text_lower:
         should_reply = True
-    # 4. НОВОЕ: Если кто-то задает вопрос (есть знак вопроса)
     elif "?" in text_lower:
         should_reply = True
-    # 5. НОВОЕ: Если сообщение длинное (история или рассказ, больше 10 слов)
     elif len(text_lower.split()) > 10:
         should_reply = True
-    # 6. Если есть слова-триггеры (позвали или поздоровались)
     else:
         triggers = ["релоку", "reloku", "привет", "салам", "пр", "ку", "здарова", "здравствуй", "хай", "бот", "эй"]
         clean_text = text_lower
@@ -222,26 +248,11 @@ async def handle_text(message: types.Message):
         if any(word in words for word in triggers):
             should_reply = True
             
+    # Если отвечать не нужно - выходим (но сообщение уже сохранилось в памяти!)
     if not should_reply:
         return
-    # ==========================================
-    
-    # ==========================================
-    
-    # ==========================================
-
-    if chat_id not in chat_memory:
-        chat_memory[chat_id] = get_new_history()
         
-    # ПРОВЕРКА №3: Добавляем имя пользователя в память...
-    # (Дальше идет старый код без изменений)
-    
-        
-    # ПРОВЕРКА №3: Добавляем имя пользователя в память, чтобы бот знал, с кем говорит
-    formatted_text = f"{user_name} сказал: {message.text}"
-    chat_memory[chat_id].append({"role": "user", "content": formatted_text})
-    
-    # Делаем вид, что печатаем (в группе это выглядит круто)
+    # 4. ОТВЕТ БОТА
     await bot.send_chat_action(chat_id=chat_id, action="typing")
     
     try:
@@ -254,11 +265,10 @@ async def handle_text(message: types.Message):
         
         await message.reply(bot_reply)
         
-        # ПРОВЕРКА №4: Шанс 10% кинуть стикер после ответа
+        # Шанс кинуть стикер после ответа
         if random.random() < 0.4:
-            # СЮДА НУЖНО БУДЕТ ВСТАВИТЬ КОДЫ ТВОИХ СТИКЕРОВ!
             stickers = [
-                "CAACAgIAAxkBAANmaplx2KTRP6UMssFeXiFmQKXI6TMAAj-bAAK-mWlIMk6ipVBFGmY9BA", # Замени на реальный ID 1
+                "CAACAgIAAxkBAANmaplx2KTRP6UMssFeXiFmQKXI6TMAAj-bAAK-mWlIMk6ipVBFGmY9BA",
                 "CAACAgIAAxkBAANkaplx0YXXwSS0VVpcMzFv6Ix7EWcAAquhAAIOa6FIzKJb7Lyrevc9BA",
                 "CAACAgIAAxkBAANsapl7QxE4f-V2TRJAWkCSW7aJfDIAAi-IAAI9__hLwdqdg71ge3Q9BA",
                 "CAACAgIAAxkBAANqapl7Mw8n0rREdxf16FtFF2A70bsAAklvAAJOU3lKF1u0jVYujvQ9BA",
@@ -267,18 +277,14 @@ async def handle_text(message: types.Message):
                 "CAACAgIAAxkBAAN8apm2gDhAXQsemO6FNU0i_4Bl8KwAAiM8AAKR5ElLgANTK_JWn4s9BA",
                 "CAACAgIAAxkBAAN6apm2USN1reKTV5pR70zXiAqgz8cAAp6pAAK84alI08F59A73WLM9BA",
                 "CAACAgIAAxkBAAN4apm2J3ZIQOFC8_TYjbLeCDWE20UAAsaaAAJ699FLdRBffT1WSbE9BA",
-                
             ]
-            # Выбираем случайный стикер из списка
             chosen_sticker = random.choice(stickers)
-            if chosen_sticker != "CAACAgIAAxkBAAE...": # Проверка, что ты их заменил
-                await message.answer_sticker(chosen_sticker)
+            await message.answer_sticker(chosen_sticker)
             
     except Exception as e:
         chat_memory[chat_id].pop()
         error_msg = str(e).lower()
         
-        # ПРОВЕРКА №2: Реакция на лимиты OpenRouter (ошибки 429, 402 или исчерпание квоты)
         if "402" in error_msg or "429" in error_msg or "limit" in error_msg or "quota" in error_msg:
             await message.reply("Я устал, пойду отдохну 💤")
         else:
@@ -290,3 +296,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+    
