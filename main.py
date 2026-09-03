@@ -108,7 +108,7 @@ async def handle_text(message: types.Message):
             await bot.leave_chat(chat_id)
         return
 
-        # ==========================================
+            # ==========================================
     # БЛОК: ФИЛЬТР ВНИМАНИЯ (ЭКОНОМИЯ ТОКЕНОВ)
     # ==========================================
     should_reply = False
@@ -120,18 +120,30 @@ async def handle_text(message: types.Message):
     # 2. Если кто-то сделал реплай (ответил) на сообщение самого бота
     elif message.reply_to_message and message.reply_to_message.from_user.id == bot.id:
         should_reply = True
-    # 3. Если бота тегнули в чате через @ (НОВОЕ!)
-    elif "@relokus_bot" in text_lower: # <-- ВПИШИ СЮДА ЮЗЕРНЕЙМ БОТА (например "@my_super_bot")
+    # 3. Если бота тегнули в чате через @
+    elif "@Relokus_bot" in text_lower: # <-- Не забудь оставить свой юзернейм!
         should_reply = True
-    # 4. Если есть слова-триггеры (позвали или поздоровались)
+    # 4. НОВОЕ: Если кто-то задает вопрос (есть знак вопроса)
+    elif "?" in text_lower:
+        should_reply = True
+    # 5. НОВОЕ: Если сообщение длинное (история или рассказ, больше 10 слов)
+    elif len(text_lower.split()) > 10:
+        should_reply = True
+    # 6. Если есть слова-триггеры (позвали или поздоровались)
     else:
-        triggers = ["релоку", "reloku" "привет", "салам", "ку", "здарова", "здравствуй", "хай", "бот", "эй"]
-        words = text_lower.split()
+        triggers = ["релоку", "reloku", "привет", "салам", "пр", "ку", "здарова", "здравствуй", "хай", "бот", "эй"]
+        clean_text = text_lower
+        for char in ",.!?:;()":
+            clean_text = clean_text.replace(char, "")
+            
+        words = clean_text.split()
         if any(word in words for word in triggers):
             should_reply = True
             
     if not should_reply:
         return
+    # ==========================================
+    
     # ==========================================
     
     # ==========================================
