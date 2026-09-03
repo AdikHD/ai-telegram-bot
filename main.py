@@ -97,15 +97,47 @@ async def handle_text(message: types.Message):
     chat_id = message.chat.id
     user_name = message.from_user.first_name
     
-    # ПРОВЕРКА №1: Защита от чужих групп. Бот работает только в выбранной группе и в личке с админом.
+    # ПРОВЕРКА №1: Защита от чужих групп.
     if chat_id != ALLOWED_GROUP_ID and chat_id != ADMIN_ID:
         if message.chat.type in ['group', 'supergroup']:
             await message.answer("Мой создатель запретил мне работать в чужих группах. Прощайте!")
             await bot.leave_chat(chat_id)
         return
 
+    # ==========================================
+    # НОВЫЙ БЛОК: ФИЛЬТР ВНИМАНИЯ (ЭКОНОМИЯ ТОКЕНОВ)
+    # ==========================================
+    should_reply = False
+    text_lower = message.text.lower()
+    
+    # 1. В личке с админом отвечаем всегда
+    if chat_id == ADMIN_ID:
+        should_reply = True
+    # 2. Если кто-то сделал реплай (ответил) на сообщение самого бота
+    elif message.reply_to_message and message.reply_to_message.from_user.id == bot.id:
+        should_reply = True
+    # 3. Если есть слова-триггеры (позвали или поздоровались)
+    else:
+        # Слова для проверки отдельными словами, чтобы не реагировал на случайные слоги
+        triggers = ["привет", "Релоку", "Reloku","салам", "ку", "здарова", "здравствуй", "хай", "бот", "эй"]
+        words = text_lower.split()
+        
+        # Если хоть одно слово из списка есть в сообщении — отвечаем
+        if any(word in words for word in triggers):
+            should_reply = True
+            
+    # Если бот решил не отвечать, мы просто выходим из функции (return)
+    # Сообщение не пойдет в API, и токены не потратятся!
+    if not should_reply:
+        return
+    # ==========================================
+
     if chat_id not in chat_memory:
         chat_memory[chat_id] = get_new_history()
+        
+    # ПРОВЕРКА №3: Добавляем имя пользователя в память...
+    # (Дальше идет старый код без изменений)
+    
         
     # ПРОВЕРКА №3: Добавляем имя пользователя в память, чтобы бот знал, с кем говорит
     formatted_text = f"{user_name} сказал: {message.text}"
@@ -125,7 +157,7 @@ async def handle_text(message: types.Message):
         await message.reply(bot_reply)
         
         # ПРОВЕРКА №4: Шанс 10% кинуть стикер после ответа
-        if random.random() < 0.1:
+        if random.random() < 0.2:
             # СЮДА НУЖНО БУДЕТ ВСТАВИТЬ КОДЫ ТВОИХ СТИКЕРОВ!
             stickers = [
                 "CAACAgIAAxkBAANmaplx2KTRP6UMssFeXiFmQKXI6TMAAj-bAAK-mWlIMk6ipVBFGmY9BA", # Замени на реальный ID 1
