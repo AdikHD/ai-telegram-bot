@@ -12,6 +12,11 @@ class PingHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b'Alive')
+        
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
+        
 
 class ReusableServer(HTTPServer):
     allow_reuse_address = True
