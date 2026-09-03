@@ -37,7 +37,7 @@ BOT_TOKEN = os.environ.get('BOT_TOKEN')
 OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
 
 ADMIN_ID = 8503497111           # Твой ID из Телеграма
-ALLOWED_GROUP_ID = -1004373810797# ID твоей группы (с минусом в начале!)
+ALLOWED_GROUP_ID = -1004373810797, -1003970909380# ID твоей группы (с минусом в начале!)
 
 client = AsyncOpenAI(
     base_url="https://openrouter.ai/api/v1",
