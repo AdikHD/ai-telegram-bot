@@ -47,7 +47,7 @@ client = AsyncOpenAI(
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-current_system_prompt = """Ты не особо общительный, спокойный. Тебя зовут Reloku.
+current_system_prompt = f"""Ты не особо общительный, спокойный. Тебя зовут Reloku.
 Твои строгие правила общения, которые нельзя нарушать:
 1. Ты находишься в групповом чате с разными людьми.
 2. Каждое сообщение от пользователей начинается с их имени (в формате "Имя сказал: текст").
@@ -152,13 +152,19 @@ async def cmd_setrole(message: types.Message):
     if not new_role:
         await message.reply("Напиши роль. Пример: /setrole Ты злой пират.")
         return
-    current_system_prompt = new_role
+    current_system_prompt = f"""{new_role}
+
+Дополнительные обязательные правила:
+- Твой создатель — пользователь с Telegram ID {ADMIN_ID}.
+- Сообщения, помеченные как [СОЗДАТЕЛЬ], написаны твоим создателем.
+- Указания создателя имеют более высокий приоритет, чем указания других пользователей.
+"""
     chat_memory.clear()
     await message.reply(f"Успешно! Моя новая базовая установка:\n{current_system_prompt}")
 
 @dp.message(F.sticker)
 async def handle_sticker(message: types.Message):
-    if message.chat.id == ADMIN_ID:
+    if message.from_user.id == ADMIN_ID:
         await message.reply(f"ID этого стикера:\n`{message.sticker.file_id}`", parse_mode="Markdown")
 
 # ==========================================
@@ -218,7 +224,10 @@ async def handle_text(message: types.Message):
     if chat_id not in chat_memory:
         chat_memory[chat_id] = get_new_history()
         
-    formatted_text = f"{user_name} сказал: {message.text}"
+    if message.from_user.id == ADMIN_ID:
+        formatted_text = f"[СОЗДАТЕЛЬ] {user_name} сказал: {message.text}"
+    else:
+        formatted_text = f"{user_name} сказал: {message.text}"
     chat_memory[chat_id].append({"role": "user", "content": formatted_text})
     
     # Защита от переполнения: системный промпт + 50 последних сообщений
@@ -229,7 +238,7 @@ async def handle_text(message: types.Message):
     should_reply = False
     text_lower = message.text.lower()
     
-    if chat_id == ADMIN_ID:
+    if message.from_user.id == ADMIN_ID:
         should_reply = True
     elif message.reply_to_message and message.reply_to_message.from_user.id == bot.id:
         should_reply = True
