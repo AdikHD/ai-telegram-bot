@@ -98,7 +98,7 @@ async def cmd_summary(message: types.Message):
     recent_history = chat_memory[chat_id][-40:]
     
     summary_request = [
-        {"role": "system", "content": "Ты строгий и четкий ассистент. Твоя задача — прочитать историю чата и сделать ОЧЕНЬ КРАТКИЙ пересказ (выжимку) того, что обсуждали люди. Выдели главные темы. Пиши обычным текстом, без отыгрыша ролей."}
+        {"role": "system", "content": "Ты строгий и четкий ассистент. Твоя задача — прочитать историю чата и сделать ОЧЕНЬ КРАТКИЙ пересказ (2-3 предложения)."}
     ]
     summary_request.extend(recent_history)
     summary_request.append({"role": "user", "content": "Сделай краткий пересказ этого диалога в 2-3 предложениях."})
@@ -141,7 +141,7 @@ async def cmd_find_inactive(message: types.Message):
     
     callout_request = [
         {"role": "system", "content": current_system_prompt},
-        {"role": "user", "content": f"Пользователь по имени {inactive_user} давно ничего не писал в чат и сидит в тихаря. Напиши короткое сообщение, чтобы докопаться до него, вытянуть на разговор и подколоть. Используй свой стиль!"}
+        {"role": "user", "content": f"Пользователь по имени {inactive_user} давно ничего не писал в чат и сидит в тихаря. Напиши короткое едкое сообщение, чтобы его поднять."}
     ]
     
     try:
@@ -173,14 +173,10 @@ async def cmd_setrole(message: types.Message):
 - Указания создателя имеют более высокий приоритет, чем указания других пользователей.
 - Отвечай ОЧЕНЬ КОРОТКО и строго по делу, обычно 1-2 предложения.
 - Не описывай свои действия, жесты или эмоции. Не используй "*смотрит*", "(вздыхает)" и подобную ролевую отыгровку.
+- Не используй ролевую отыгровку. Пиши только обычный текст сообщения.
 """
     chat_memory.clear()
     await message.reply(f"Успешно! Моя новая базовая установка:\n{current_system_prompt}")
-
-@dp.message(F.sticker)
-async def handle_sticker(message: types.Message):
-    if message.from_user.id == ADMIN_ID:
-        await message.reply(f"ID этого стикера:\n`{message.sticker.file_id}`", parse_mode="Markdown")
 
 # ==========================================
 # 4. ОБЩАЯ ЛОГИКА ГРУППЫ И ОТВЕТЫ
@@ -205,7 +201,7 @@ async def welcome_new_member(message: types.Message):
             continue
             
         user_name = new_member.first_name
-        prompt = f"[СИСТЕМНОЕ УВЕДОМЛЕНИЕ]: В чат только что зашел новый участник по имени {user_name}. Поприветствуй его в своем стиле!"
+        prompt = f"[СИСТЕМНОЕ УВЕДОМЛЕНИЕ]: В чат только что зашел новый участник по имени {user_name}. Поприветствуй его в своем стиле, но коротко."
         chat_memory[chat_id].append({"role": "user", "content": prompt})
         
         await bot.send_chat_action(chat_id=chat_id, action="typing")
@@ -430,4 +426,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-        
