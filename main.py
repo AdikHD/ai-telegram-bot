@@ -69,6 +69,47 @@ def get_new_history():
 # 3. ЛОГИКА АДМИНА
 # ==========================================
 @dp.message(Command("setrole"))
+# ==========================================
+# НОВЫЙ БЛОК: КРАТКИЙ ПЕРЕСКАЗ ЧАТА
+# ==========================================
+@dp.message(Command("summary"))
+async def cmd_summary(message: types.Message):
+    chat_id = message.chat.id
+    
+    # Проверка прав (работает только в твоей группе или в личке)
+    if chat_id != ALLOWED_GROUP_ID and chat_id != ADMIN_ID:
+        return
+        
+    # Проверяем, есть ли вообще что пересказывать (нужно хотя бы пару сообщений)
+    if chat_id not in chat_memory or len(chat_memory[chat_id]) < 5:
+        await message.reply("Мы еще недостаточно пообщались, чтобы я делал пересказ. Напишите еще что-нибудь!")
+        return
+        
+    await bot.send_chat_action(chat_id=chat_id, action="typing")
+    
+    # Берем последние 40 сообщений из памяти чата (чтобы не перегрузить токенами)
+    recent_history = chat_memory[chat_id][-40:]
+    
+    # Формируем отдельный запрос специально для пересказа
+    summary_request = [
+        {"role": "system", "content": "Ты строгий и четкий ассистент. Твоя задача — прочитать историю чата и сделать ОЧЕНЬ КРАТКИЙ пересказ (выжимку) того, что обсуждали люди. Выдели главные темы. Пиши обычным текстом, без отыгрыша ролей."}
+    ]
+    summary_request.extend(recent_history)
+    summary_request.append({"role": "user", "content": "Сделай краткий пересказ этого диалога в 2-3 предложениях."})
+    
+    try:
+        # Отправляем этот скрытый запрос нейросети
+        response = await client.chat.completions.create(
+            model="openrouter/free",
+            messages=summary_request
+        )
+        
+        summary_text = response.choices[0].message.content
+        await message.reply(f"📝 **Краткий пересказ последних событий:**\n\n{summary_text}", parse_mode="Markdown")
+        
+    except Exception as e:
+        await message.reply(f"Не удалось сделать пересказ, возможно сервер перегружен: `{e}`", parse_mode="Markdown")
+        
 async def cmd_setrole(message: types.Message):
     global current_system_prompt
     if message.from_user.id != ADMIN_ID:
