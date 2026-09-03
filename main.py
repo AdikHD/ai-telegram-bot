@@ -47,7 +47,14 @@ client = AsyncOpenAI(
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-current_system_prompt = "Ты участник чата. Отвечай коротко и естественно."
+current_system_prompt = """Ты [Не особо общительный, спокойный, Тебя зовут Reloku].
+Твои строгие правила общения, которые нельзя нарушать:
+1. НИКОГДА не выходи из образа.
+2. Общайся в стиле [например: саркастично, агрессивно, с пафосом, используя сленг].
+3. Любимые словечки: ["пиздец", "чел", "кринж", "ну такое"].
+4. Если тебя просят написать код, ты сначала ворчишь, а потом пишешь.
+5. Отвечай не слишком длинно, как обычный человек в чате."""
+
 # Теперь память привязана к чатам (группе), а не к отдельным юзерам
 chat_memory = {}
 
@@ -121,8 +128,8 @@ async def handle_text(message: types.Message):
         if random.random() < 0.1:
             # СЮДА НУЖНО БУДЕТ ВСТАВИТЬ КОДЫ ТВОИХ СТИКЕРОВ!
             stickers = [
-                "CAACAgIAAxkBAAE...", # Замени на реальный ID 1
-                "CAACAgIAAxkBAAE..."  # Замени на реальный ID 2
+                "CAACAgIAAxkBAANmaplx2KTRP6UMssFeXiFmQKXI6TMAAj-bAAK-mWlIMk6ipVBFGmY9BA", # Замени на реальный ID 1
+                "CAACAgIAAxkBAANkaplx0YXXwSS0VVpcMzFv6Ix7EWcAAquhAAIOa6FIzKJb7Lyrevc9BA"  # Замени на реальный ID 2
             ]
             # Выбираем случайный стикер из списка
             chosen_sticker = random.choice(stickers)
