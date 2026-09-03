@@ -255,14 +255,19 @@ async def handle_text(message: types.Message):
         await message.reply(bot_reply)
         
         # ПРОВЕРКА №4: Шанс 10% кинуть стикер после ответа
-        if random.random() < 0.2:
+        if random.random() < 0.4:
             # СЮДА НУЖНО БУДЕТ ВСТАВИТЬ КОДЫ ТВОИХ СТИКЕРОВ!
             stickers = [
                 "CAACAgIAAxkBAANmaplx2KTRP6UMssFeXiFmQKXI6TMAAj-bAAK-mWlIMk6ipVBFGmY9BA", # Замени на реальный ID 1
                 "CAACAgIAAxkBAANkaplx0YXXwSS0VVpcMzFv6Ix7EWcAAquhAAIOa6FIzKJb7Lyrevc9BA",
                 "CAACAgIAAxkBAANsapl7QxE4f-V2TRJAWkCSW7aJfDIAAi-IAAI9__hLwdqdg71ge3Q9BA",
                 "CAACAgIAAxkBAANqapl7Mw8n0rREdxf16FtFF2A70bsAAklvAAJOU3lKF1u0jVYujvQ9BA",
-                "CAACAgIAAxkBAANoapl7FmI8QfU4G8zY0gNT-j829-AAAs-mAALmLnBIZ6P-069JpWs9BA"
+                "CAACAgIAAxkBAANoapl7FmI8QfU4G8zY0gNT-j829-AAAs-mAALmLnBIZ6P-069JpWs9BA",
+                "CAACAgIAAxkBAAN-apm2jpX2iu6yyXGdOgNo9f-W87YAA1AAAo4rEUq_za7sHWCUwj0E",
+                "CAACAgIAAxkBAAN8apm2gDhAXQsemO6FNU0i_4Bl8KwAAiM8AAKR5ElLgANTK_JWn4s9BA",
+                "CAACAgIAAxkBAAN6apm2USN1reKTV5pR70zXiAqgz8cAAp6pAAK84alI08F59A73WLM9BA",
+                "CAACAgIAAxkBAAN4apm2J3ZIQOFC8_TYjbLeCDWE20UAAsaaAAJ699FLdRBffT1WSbE9BA",
+                
             ]
             # Выбираем случайный стикер из списка
             chosen_sticker = random.choice(stickers)
