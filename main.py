@@ -36,7 +36,7 @@ GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 
 genai.configure(api_key=GEMINI_API_KEY)
 # Используем самую актуальную версию Flash
-model = genai.GenerativeModel('gemini-1.5-flash-latest')
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
