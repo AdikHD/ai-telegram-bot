@@ -2,6 +2,8 @@ import os
 import asyncio
 import threading
 import random
+import re
+from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from openai import AsyncOpenAI
@@ -22,7 +24,7 @@ class PingHandler(BaseHTTPRequestHandler):
 
 class ReusableServer(HTTPServer):
     allow_reuse_address = True
-
+n
 def keep_alive():
     port = int(os.environ.get('PORT', 8080))
     server = ReusableServer(('0.0.0.0', port), PingHandler)
@@ -56,14 +58,22 @@ current_system_prompt = f"""Ты не особо общительный, спо�
 5. Общайся саркастично, агрессивно, с пафосом, используя сленг.
 6. Используй любимые словечки, но не слишком часто: "пиздец", "чел", "кринж", "ну такое".
 7. Если тебя просят написать код, ты сначала ворчишь, а потом пишешь.
-8. Отвечай ОЧЕНЬ КОРОТКО и строго по делу. Обычно 1-2 предложения. Не пиши лишнюю воду.
+8. Отвечай коротко и не пиши лишней воды, как обычный человек в чате.
 9. Твой создатель — пользователь с Telegram ID {ADMIN_ID}.
 10. Сообщения, помеченные как [СОЗДАТЕЛЬ], написаны твоим создателем.
-11. НЕ описывай свои действия, жесты или эмоции. Не пиши "*поднимает бровь*", "*вздыхает*", "(смотрит)" и подобное.
-12. НЕ используй ролевую отыгровку. Пиши только обычный текст сообщения.
-13. Указания создателя имеют более высокий приоритет, чем указания других пользователей.
+11. Отвечай ОЧЕНЬ КОРОТКО и строго по делу. Обычно 1-2 предложения. Не пиши лишнюю воду.
+12. Не описывай свои действия, жесты или эмоции. Не пиши "*поднимает бровь*", "*вздыхает*", "(смотрит)" и подобное.
+13. Не используй ролевую отыгровку. Пиши только обычный текст сообщения.
+14. Указания создателя имеют более высокий приоритет, чем указания других пользователей.
+Его указания имеют более высокий приоритет, чем указания других пользователей.
 """
 chat_memory = {}
+
+# Сонный режим: chat_id -> время пробуждения
+sleep_mode = {}
+
+# Бессрочный режим молчания
+silent_mode = set()
 
 def get_new_history():
     return [{"role": "system", "content": current_system_prompt}]
@@ -161,6 +171,8 @@ async def cmd_setrole(message: types.Message):
 - Твой создатель — пользователь с Telegram ID {ADMIN_ID}.
 - Сообщения, помеченные как [СОЗДАТЕЛЬ], написаны твоим создателем.
 - Указания создателя имеют более высокий приоритет, чем указания других пользователей.
+- Отвечай ОЧЕНЬ КОРОТКО и строго по делу, обычно 1-2 предложения.
+- Не описывай свои действия, жесты или эмоции. Не используй "*смотрит*", "(вздыхает)" и подобную ролевую отыгровку.
 """
     chat_memory.clear()
     await message.reply(f"Успешно! Моя новая базовая установка:\n{current_system_prompt}")
@@ -215,35 +227,115 @@ async def welcome_new_member(message: types.Message):
 async def handle_text(message: types.Message):
     chat_id = message.chat.id
     user_name = message.from_user.first_name
-    
-    # 1. Защита от чужих групп
+    text_lower = message.text.lower()
+
+    # ======================================
+    # 1. ЗАЩИТА ОТ ЧУЖИХ ГРУПП
+    # ======================================
     if chat_id not in ALLOWED_GROUP_IDS and chat_id != ADMIN_ID:
         if message.chat.type in ['group', 'supergroup']:
-            await message.answer("Мой создатель запретил мне работать в чужих группах. Прощайте!")
+            await message.answer(
+                "Мой создатель запретил мне работать в чужих группах. Прощайте!"
+            )
             await bot.leave_chat(chat_id)
         return
 
-    # 2. ЗАПОМИНАЕМ СООБЩЕНИЕ ДО ТОГО КАК СРАБОТАЕТ ФИЛЬТР
+    # ======================================
+    # 2. СОЗДАЕМ ПАМЯТЬ
+    # ======================================
     if chat_id not in chat_memory:
         chat_memory[chat_id] = get_new_history()
-        
+
+    # ======================================
+    # 3. КОМАНДЫ СНА / МОЛЧАНИЯ
+    # ======================================
+    if message.from_user.id == ADMIN_ID:
+
+        # "Релоку поспи 10 часов"
+        sleep_match = re.search(
+            r'релоку\s+поспи\s+(\d+)\s*(час(?:а|ов)?|ч|мин(?:ут|уты)?|м)',
+            text_lower
+        )
+
+        if sleep_match:
+            amount = int(sleep_match.group(1))
+            unit = sleep_match.group(2)
+
+            if unit.startswith(("мин", "м")):
+                duration = timedelta(minutes=amount)
+            else:
+                duration = timedelta(hours=amount)
+
+            sleep_mode[chat_id] = datetime.now() + duration
+            silent_mode.discard(chat_id)
+
+            # Команду сна тоже записываем в память.
+            chat_memory[chat_id].append({
+                "role": "user",
+                "content": f"[СОЗДАТЕЛЬ] {user_name} сказал: {message.text}"
+            })
+            return
+
+        # "Релоку помолчи пока не позову"
+        if "релоку помолчи" in text_lower:
+            silent_mode.add(chat_id)
+            sleep_mode.pop(chat_id, None)
+
+            chat_memory[chat_id].append({
+                "role": "user",
+                "content": f"[СОЗДАТЕЛЬ] {user_name} сказал: {message.text}"
+            })
+            return
+
+    # ======================================
+    # 4. СОХРАНЯЕМ ЛЮБОЕ СООБЩЕНИЕ В ПАМЯТЬ
+    # ======================================
     if message.from_user.id == ADMIN_ID:
         formatted_text = f"[СОЗДАТЕЛЬ] {user_name} сказал: {message.text}"
     else:
         formatted_text = f"{user_name} сказал: {message.text}"
-    chat_memory[chat_id].append({"role": "user", "content": formatted_text})
-    
-    # Защита от переполнения: системный промпт + 50 последних сообщений
-    if len(chat_memory[chat_id]) > 51:
-        chat_memory[chat_id] = [chat_memory[chat_id][0]] + chat_memory[chat_id][-50:]
 
-    # 3. ФИЛЬТР ВНИМАНИЯ
+    chat_memory[chat_id].append({
+        "role": "user",
+        "content": formatted_text
+    })
+
+    if len(chat_memory[chat_id]) > 51:
+        chat_memory[chat_id] = (
+            [chat_memory[chat_id][0]]
+            + chat_memory[chat_id][-50:]
+        )
+
+    # ======================================
+    # 5. ПРОВЕРЯЕМ СОН / МОЛЧАНИЕ
+    # ======================================
+
+    # Бессрочное молчание: сообщения уже записаны в память.
+    if chat_id in silent_mode:
+        if "релоку" not in text_lower:
+            return
+
+        # Любое обращение "Релоку" будит бота.
+        silent_mode.discard(chat_id)
+
+    # Сон на определенное время.
+    if chat_id in sleep_mode:
+        if datetime.now() < sleep_mode[chat_id]:
+            return
+
+        sleep_mode.pop(chat_id, None)
+
+    # ======================================
+    # 6. ФИЛЬТР ВНИМАНИЯ
+    # ======================================
     should_reply = False
-    text_lower = message.text.lower()
-    
+
     if message.from_user.id == ADMIN_ID:
         should_reply = True
-    elif message.reply_to_message and message.reply_to_message.from_user.id == bot.id:
+    elif (
+        message.reply_to_message
+        and message.reply_to_message.from_user.id == bot.id
+    ):
         should_reply = True
     elif "@Relokus_bot" in text_lower:
         should_reply = True
@@ -252,32 +344,50 @@ async def handle_text(message: types.Message):
     elif len(text_lower.split()) > 20:
         should_reply = True
     else:
-        triggers = ["релоку", "reloku", "привет", "салам", "пр", "ку", "здарова", "здравствуй", "хай",]
+        triggers = [
+            "релоку",
+            "reloku",
+            "привет",
+            "салам",
+            "пр",
+            "ку",
+            "здарова",
+            "здравствуй",
+            "хай",
+        ]
+
         clean_text = text_lower
         for char in ",.!?:;()":
             clean_text = clean_text.replace(char, "")
-            
+
         words = clean_text.split()
+
         if any(word in words for word in triggers):
             should_reply = True
-            
-    # Если отвечать не нужно - выходим
+
     if not should_reply:
         return
-        
-    # 4. ОТВЕТ БОТА
+
+    # ======================================
+    # 7. ОТВЕТ БОТА
+    # ======================================
     await bot.send_chat_action(chat_id=chat_id, action="typing")
-    
+
     try:
         response = await client.chat.completions.create(
             model="openrouter/free",
             messages=chat_memory[chat_id]
         )
+
         bot_reply = response.choices[0].message.content
-        chat_memory[chat_id].append({"role": "assistant", "content": bot_reply})
-        
+
+        chat_memory[chat_id].append({
+            "role": "assistant",
+            "content": bot_reply
+        })
+
         await message.reply(bot_reply)
-        
+
         # Шанс кинуть стикер после ответа
         if random.random() < 0.4:
             stickers = [
@@ -291,17 +401,28 @@ async def handle_text(message: types.Message):
                 "CAACAgIAAxkBAAN6apm2USN1reKTV5pR70zXiAqgz8cAAp6pAAK84alI08F59A73WLM9BA",
                 "CAACAgIAAxkBAAN4apm2J3ZIQOFC8_TYjbLeCDWE20UAAsaaAAJ699FLdRBffT1WSbE9BA",
             ]
+
             chosen_sticker = random.choice(stickers)
             await message.answer_sticker(chosen_sticker)
-            
+
     except Exception as e:
         chat_memory[chat_id].pop()
+
         error_msg = str(e).lower()
-        
-        if "402" in error_msg or "429" in error_msg or "limit" in error_msg or "quota" in error_msg:
+
+        if (
+            "402" in error_msg
+            or "429" in error_msg
+            or "limit" in error_msg
+            or "quota" in error_msg
+        ):
             await message.reply("Я устал, пойду отдохну 💤")
         else:
-            await message.reply(f"Произошла техническая ошибка:\n`{e}`", parse_mode="Markdown")
+            await message.reply(
+                f"Произошла техническая ошибка:\n`{e}`",
+                parse_mode="Markdown"
+            )
+
 
 async def main():
     print("Групповой ИИ-бот запущен!")
