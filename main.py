@@ -8,7 +8,7 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart
 
 # ==========================================
-# 1. МИНИ-СЕРВЕР 
+# 1. МИНИ-СЕРВЕР (ЗАЩИТА ОТ СНА ДЛЯ RENDER)
 # ==========================================
 class PingHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -34,46 +34,51 @@ GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 
 genai.configure(api_key=GEMINI_API_KEY)
 
+# Подключаем твою рабочую модель
+model = genai.GenerativeModel('models/gemini-2.5-flash')
+
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 # ==========================================
-# 3. ЛОГИКА - СКАНЕР МОДЕЛЕЙ
+# 3. ДОЛГОВРЕМЕННАЯ ПАМЯТЬ БОТА
 # ==========================================
+# Словарь для хранения историй переписок разных пользователей
+user_chats = {}
+
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message):
-    await message.answer("Спрашиваю у Google список доступных моделей... ⏳")
-    
-    try:
-        available_models = []
-        # Запрашиваем все модели и фильтруем те, что умеют писать текст
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                available_models.append(m.name)
-        
-        if available_models:
-            models_str = "\n".join(available_models)
-            await message.answer(
-                f"✅ **Успешно! Вот модели, которые работают с твоим ключом:**\n\n`{models_str}`\n\nСкопируй самое короткое и понятное название (например, models/gemini-1.5-flash) и пришли сюда!", 
-                parse_mode="Markdown"
-            )
-        else:
-            await message.answer("❌ Твой ключ рабочий, но Google не выдал ни одной текстовой модели. Возможно, дело в регионе или ограничениях аккаунта.")
-            
-    except Exception as e:
-        await message.answer(f"❌ Ошибка при запросе списка:\n`{e}`", parse_mode="Markdown")
+    user_id = message.from_user.id
+    # Создаем или сбрасываем память пользователя при команде /start
+    user_chats[user_id] = model.start_chat(history=[])
+    await message.answer("Привет! Я обновленный ИИ-бот с долговременной памятью. Давай общаться!")
 
 @dp.message(F.text)
 async def handle_text(message: types.Message):
-    await message.reply("Сначала нажми /start, чтобы мы узнали правильное имя модели!")
+    user_id = message.from_user.id
+    
+    # Если пользователь пишет впервые (без /start), создаем для него новую сессию памяти
+    if user_id not in user_chats:
+        user_chats[user_id] = model.start_chat(history=[])
+        
+    chat_session = user_chats[user_id]
+    
+    await bot.send_chat_action(chat_id=message.chat.id, action="typing")
+    
+    try:
+        # Отправляем сообщение не просто модели, а в конкретную сессию с контекстом
+        response = chat_session.send_message(message.text)
+        await message.reply(response.text)
+        
+    except Exception as e:
+        await message.reply(f"Произошла ошибка:\n`{e}`", parse_mode="Markdown")
 
 # ==========================================
 # 4. ЗАПУСК
 # ==========================================
 async def main():
-    print("Бот-сканер успешно запущен!")
+    print("ИИ-бот с памятью успешно запущен!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
