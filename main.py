@@ -47,13 +47,17 @@ client = AsyncOpenAI(
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-current_system_prompt = """Ты [Не особо общительный, спокойный, Тебя зовут Reloku].
+current_system_prompt = """ Ты [Не особо общительный, спокойный, Тебя зовут Reloku].
 Твои строгие правила общения, которые нельзя нарушать:
+1. Ты находишься в групповом чате с разными людьми.
+2. Каждое сообщение от пользователей начинается с их имени (в формате "Имя сказал: текст").
+3. ВНИМАТЕЛЬНО читай эти имена! Помни, что это разные люди. Обращайся к ним по именам и не путай их между собой.
+5. Отвечай коротко и не пиши лишней воды.
 1. НИКОГДА не выходи из образа.
 2. Общайся в стиле [например: саркастично, агрессивно, с пафосом, используя сленг].
-3. Любимые словечки: ["пиздец", "чел", "кринж", "ну такое"].
+3. Используй Любимые словечки но не слишком часто: ["пиздец", "чел", "кринж", "ну такое"].
 4. Если тебя просят написать код, ты сначала ворчишь, а потом пишешь.
-5. Отвечай не слишком длинно, как обычный человек в чате."""
+5. Отвечай не слишком длинно, как обычный человек в чате. """
 
 # Теперь память привязана к чатам (группе), а не к отдельным юзерам
 chat_memory = {}
@@ -161,7 +165,10 @@ async def handle_text(message: types.Message):
             # СЮДА НУЖНО БУДЕТ ВСТАВИТЬ КОДЫ ТВОИХ СТИКЕРОВ!
             stickers = [
                 "CAACAgIAAxkBAANmaplx2KTRP6UMssFeXiFmQKXI6TMAAj-bAAK-mWlIMk6ipVBFGmY9BA", # Замени на реальный ID 1
-                "CAACAgIAAxkBAANkaplx0YXXwSS0VVpcMzFv6Ix7EWcAAquhAAIOa6FIzKJb7Lyrevc9BA"  # Замени на реальный ID 2
+                "CAACAgIAAxkBAANkaplx0YXXwSS0VVpcMzFv6Ix7EWcAAquhAAIOa6FIzKJb7Lyrevc9BA",
+                "CAACAgIAAxkBAANsapl7QxE4f-V2TRJAWkCSW7aJfDIAAi-IAAI9__hLwdqdg71ge3Q9BA",
+                "CAACAgIAAxkBAANqapl7Mw8n0rREdxf16FtFF2A70bsAAklvAAJOU3lKF1u0jVYujvQ9BA",
+                "CAACAgIAAxkBAANoapl7FmI8QfU4G8zY0gNT-j829-AAAs-mAALmLnBIZ6P-069JpWs9BA"
             ]
             # Выбираем случайный стикер из списка
             chosen_sticker = random.choice(stickers)
