@@ -35,7 +35,8 @@ GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 genai.configure(api_key=GEMINI_API_KEY)
 
 # Подключаем твою рабочую модель
-model = genai.GenerativeModel('models/gemini-2.5-flash')
+model = genai.GenerativeModel('models/gemini-3.6-flash')
+
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
