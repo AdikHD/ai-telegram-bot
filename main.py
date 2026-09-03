@@ -51,7 +51,7 @@ current_system_prompt = """ Ты [Не особо общительный, спо
 Твои строгие правила общения, которые нельзя нарушать:
 1. Ты находишься в групповом чате с разными людьми.
 2. Каждое сообщение от пользователей начинается с их имени (в формате "Имя сказал: текст").
-3. ВНИМАТЕЛЬНО читай эти имена! Помни, что это разные люди. Обращайся к ним по именам и не путай их между собой.
+3. ВНИМАТЕЛЬНО читай эти имена! Помни, что это разные люди. Обращайся к ним по именам и не путай их между собо�[...]
 5. Отвечай коротко и не пиши лишней воды.
 1. НИКОГДА не выходи из образа.
 2. Общайся в стиле [например: саркастично, агрессивно, с пафосом, используя сленг].
@@ -73,7 +73,7 @@ def get_new_history():
 async def cmd_summary(message: types.Message):
     chat_id = message.chat.id
     
-    if chat_id != ALLOWED_GROUP_ID and chat_id != ADMIN_ID:
+    if chat_id not in ALLOWED_GROUP_IDS and chat_id != ADMIN_ID:
         return
         
     if chat_id not in chat_memory or len(chat_memory[chat_id]) < 5:
@@ -84,7 +84,7 @@ async def cmd_summary(message: types.Message):
     recent_history = chat_memory[chat_id][-40:]
     
     summary_request = [
-        {"role": "system", "content": "Ты строгий и четкий ассистент. Твоя задача — прочитать историю чата и сделать ОЧЕНЬ КРАТКИЙ пересказ (выжимку) того, что обсуждали люди. Выдели главные темы. Пиши обычным текстом, без отыгрыша ролей."}
+        {"role": "system", "content": "Ты строгий и четкий ассистент. Твоя задача — прочитать историю чата и сделать ОЧЕНЬ К�[...]"}
     ]
     summary_request.extend(recent_history)
     summary_request.append({"role": "user", "content": "Сделай краткий пересказ этого диалога в 2-3 предложениях."})
@@ -104,7 +104,7 @@ async def cmd_summary(message: types.Message):
 async def cmd_find_inactive(message: types.Message):
     chat_id = message.chat.id
     
-    if chat_id != ALLOWED_GROUP_ID and chat_id != ADMIN_ID:
+    if chat_id not in ALLOWED_GROUP_IDS and chat_id != ADMIN_ID:
         return
 
     if chat_id not in chat_memory or len(chat_memory[chat_id]) < 5:
@@ -127,7 +127,7 @@ async def cmd_find_inactive(message: types.Message):
     
     callout_request = [
         {"role": "system", "content": current_system_prompt},
-        {"role": "user", "content": f"Пользователь по имени {inactive_user} давно ничего не писал в чат и сидит в тихаря. Напиши короткое сообщение, чтобы докопаться до него, вытянуть на разговор и подколоть. Используй свой стиль!"}
+        {"role": "user", "content": f"Пользователь по имени {inactive_user} давно ничего не писал в чат и сидит в тихаря. Напиши кор[...]"}
     ]
     
     try:
@@ -173,7 +173,7 @@ async def cmd_start(message: types.Message):
 @dp.message(F.new_chat_members)
 async def welcome_new_member(message: types.Message):
     chat_id = message.chat.id
-    if chat_id != ALLOWED_GROUP_ID and chat_id != ADMIN_ID:
+    if chat_id not in ALLOWED_GROUP_IDS and chat_id != ADMIN_ID:
         return
     if chat_id not in chat_memory:
         chat_memory[chat_id] = get_new_history()
@@ -183,7 +183,7 @@ async def welcome_new_member(message: types.Message):
             continue
             
         user_name = new_member.first_name
-        prompt = f"[СИСТЕМНОЕ УВЕДОМЛЕНИЕ]: В чат только что зашел новый участник по имени {user_name}. Поприветствуй его в своем стиле!"
+        prompt = f"[СИСТЕМНОЕ УВЕДОМЛЕНИЕ]: В чат только что зашел новый участник по имени {user_name}. Поприветствуй его[...]"
         chat_memory[chat_id].append({"role": "user", "content": prompt})
         
         await bot.send_chat_action(chat_id=chat_id, action="typing")
@@ -207,7 +207,7 @@ async def handle_text(message: types.Message):
     user_name = message.from_user.first_name
     
     # 1. Защита от чужих групп
-    if chat_id != ALLOWED_GROUP_ID and chat_id != ADMIN_ID:
+    if chat_id not in ALLOWED_GROUP_IDS and chat_id != ADMIN_ID:
         if message.chat.type in ['group', 'supergroup']:
             await message.answer("Мой создатель запретил мне работать в чужих группах. Прощайте!")
             await bot.leave_chat(chat_id)
