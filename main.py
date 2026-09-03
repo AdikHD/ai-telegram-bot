@@ -7,9 +7,6 @@ from openai import AsyncOpenAI
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart, Command
 
-# ==========================================
-# 1. МИНИ-СЕРВЕР
-# ==========================================
 class PingHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -26,16 +23,11 @@ def keep_alive():
 
 threading.Thread(target=keep_alive, daemon=True).start()
 
-# ==========================================
-# 2. НАСТРОЙКИ АДМИНА И API
-# ==========================================
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
 
-# ВСТАВЬ СЮДА СВОЙ ID ИЗ ТЕЛЕГРАМА!
-ADMIN_ID = 123456789  
+ADMIN_ID = 8503497111  # ВСТАВЬ СЮДА СВОЙ ID ИЗ ТЕЛЕГРАМА!
 
-# Подключаемся к OpenRouter через стандартный клиент OpenAI
 client = AsyncOpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=OPENROUTER_API_KEY,
@@ -44,39 +36,26 @@ client = AsyncOpenAI(
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# Глобальные переменные для памяти и роли
 current_system_prompt = "Ты дружелюбный ИИ-ассистент."
 user_chats = {}
 
 def get_new_history():
-    # Системный промпт всегда идет самым первым сообщением в памяти
     return [{"role": "system", "content": current_system_prompt}]
 
-# ==========================================
-# 3. ЛОГИКА СМЕНЫ РОЛИ (ТОЛЬКО ДЛЯ ТЕБЯ)
-# ==========================================
 @dp.message(Command("setrole"))
 async def cmd_setrole(message: types.Message):
     global current_system_prompt
-    
-    if message.from_user.id != ADMIN_ID:8503497111
-        await message.reply("У тебя нет прав менять мою личность! 🚫")
+    if message.from_user.id != ADMIN_ID:
+        await message.reply("У тебя нет прав менять мою личность!")
         return
-        
     new_role = message.text.replace("/setrole", "").strip()
-    
     if not new_role:
         await message.reply("Напиши роль. Пример: /setrole Ты злой пират.")
         return
-        
     current_system_prompt = new_role
-    user_chats.clear() 
-    
-    await message.reply(f"✅ Успешно! Моя новая базовая установка:\n{current_system_prompt}")
+    user_chats.clear()
+    await message.reply(f"Успешно! Моя новая базовая установка:\n{current_system_prompt}")
 
-# ==========================================
-# 4. ОБЩАЯ ЛОГИКА И ПАМЯТЬ
-# ==========================================
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message):
     user_chats[message.from_user.id] = get_new_history()
@@ -85,36 +64,22 @@ async def cmd_start(message: types.Message):
 @dp.message(F.text)
 async def handle_text(message: types.Message):
     user_id = message.from_user.id
-    
     if user_id not in user_chats:
         user_chats[user_id] = get_new_history()
-        
-    # 1. Записываем то, что написал ты
     user_chats[user_id].append({"role": "user", "content": message.text})
-    
     await bot.send_chat_action(chat_id=message.chat.id, action="typing")
-    
     try:
-        # Отправляем всю историю диалога полностью бесплатной модели Llama
         response = await client.chat.completions.create(
             model="meta-llama/llama-3.1-8b-instruct:free",
             messages=user_chats[user_id]
         )
-        
         bot_reply = response.choices[0].message.content
-        
-        # 2. Записываем ответ бота, чтобы он помнил свои слова
         user_chats[user_id].append({"role": "assistant", "content": bot_reply})
-        
         await message.reply(bot_reply)
     except Exception as e:
-        # В случае ошибки удаляем твой вопрос из памяти, чтобы не ломать логику
         user_chats[user_id].pop()
-        await message.reply(f"Произошла ошибка:\n`{e}`", parse_mode="Markdown")
+        await message.reply(f"Произошла ошибка:\n{e}")
 
-# ==========================================
-# 5. ЗАПУСК
-# ==========================================
 async def main():
     print("Бот на OpenRouter успешно запущен!")
     await dp.start_polling(bot)
