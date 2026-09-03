@@ -95,7 +95,48 @@ async def cmd_start(message: types.Message):
     chat_id = message.chat.id
     chat_memory[chat_id] = get_new_history()
     await message.answer("Бот запущен!")
+# ==========================================
+# НОВЫЙ БЛОК: ПРИВЕТСТВИЕ НОВИЧКОВ
+# ==========================================
+@dp.message(F.new_chat_members)
+async def welcome_new_member(message: types.Message):
+    chat_id = message.chat.id
+    
+    # Проверка на чужие группы
+    if chat_id != ALLOWED_GROUP_ID and chat_id != ADMIN_ID:
+        return
 
+    if chat_id not in chat_memory:
+        chat_memory[chat_id] = get_new_history()
+
+    # Перебираем всех, кто зашел (иногда заходят по несколько человек)
+    for new_member in message.new_chat_members:
+        # Если бот случайно добавил сам себя, он не должен здороваться с собой
+        if new_member.id == bot.id:
+            continue
+            
+        user_name = new_member.first_name
+        
+        # Формируем скрытое системное сообщение для нейросети
+        prompt = f"[СИСТЕМНОЕ УВЕДОМЛЕНИЕ]: В чат только что зашел новый участник по имени {user_name}. Поприветствуй его в своем стиле!"
+        chat_memory[chat_id].append({"role": "user", "content": prompt})
+        
+        await bot.send_chat_action(chat_id=chat_id, action="typing")
+        
+        try:
+            response = await client.chat.completions.create(
+                model="openrouter/free",
+                messages=chat_memory[chat_id]
+            )
+            bot_reply = response.choices[0].message.content
+            chat_memory[chat_id].append({"role": "assistant", "content": bot_reply})
+            
+            # Бот отвечает прямо на сообщение о вступлении
+            await message.reply(bot_reply)
+        except Exception as e:
+            chat_memory[chat_id].pop()
+            print(f"Ошибка при приветствии: {e}")
+    
 @dp.message(F.text)
 async def handle_text(message: types.Message):
     chat_id = message.chat.id
