@@ -247,6 +247,12 @@ async def handle_text(message: types.Message):
     # ======================================
     if message.from_user.id == ADMIN_ID:
 
+        if "релоку проснись" in text_lower:
+    sleep_mode.pop(chat_id, None)
+    silent_mode.discard(chat_id)
+    await message.reply("Я проснулся.")
+    return
+
         # "Релоку поспи 10 часов"
         sleep_match = re.search(
             r'релоку\s+поспи\s+(\d+)\s*(час(?:а|ов)?|ч|мин(?:ут|уты)?|м)',
