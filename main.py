@@ -98,7 +98,7 @@ async def cmd_summary(message: types.Message):
     recent_history = chat_memory[chat_id][-40:]
     
     summary_request = [
-        {"role": "system", "content": "Ты строгий и четкий ассистент. Твоя задача — прочитать историю чата и сделать ОЧЕНЬ КРАТКИЙ пересказ (2-3 предложения)."}
+        {"role": "system", "content": "Ты строгий и четкий ассистент. Твоя задача — прочитать историю чата и сделать ОЧЕНЬ КРАТКИЙ пересказ."}
     ]
     summary_request.extend(recent_history)
     summary_request.append({"role": "user", "content": "Сделай краткий пересказ этого диалога в 2-3 предложениях."})
@@ -141,7 +141,7 @@ async def cmd_find_inactive(message: types.Message):
     
     callout_request = [
         {"role": "system", "content": current_system_prompt},
-        {"role": "user", "content": f"Пользователь по имени {inactive_user} давно ничего не писал в чат и сидит в тихаря. Напиши короткое едкое сообщение, чтобы его поднять."}
+        {"role": "user", "content": f"Пользователь по имени {inactive_user} давно ничего не писал в чат и сидит в тихаря. Напиши короткое сообщение, чтобы его докопать."}
     ]
     
     try:
@@ -201,7 +201,7 @@ async def welcome_new_member(message: types.Message):
             continue
             
         user_name = new_member.first_name
-        prompt = f"[СИСТЕМНОЕ УВЕДОМЛЕНИЕ]: В чат только что зашел новый участник по имени {user_name}. Поприветствуй его в своем стиле, но коротко."
+        prompt = f"[СИСТЕМНОЕ УВЕДОМЛЕНИЕ]: В чат только что зашел новый участник по имени {user_name}. Поприветствуй его в своем стиле!"
         chat_memory[chat_id].append({"role": "user", "content": prompt})
         
         await bot.send_chat_action(chat_id=chat_id, action="typing")
@@ -248,10 +248,10 @@ async def handle_text(message: types.Message):
     if message.from_user.id == ADMIN_ID:
 
         if "релоку проснись" in text_lower:
-    sleep_mode.pop(chat_id, None)
-    silent_mode.discard(chat_id)
-    await message.reply("Я проснулся.")
-    return
+            sleep_mode.pop(chat_id, None)
+            silent_mode.discard(chat_id)
+            await message.reply("Я проснулся.")
+            return
 
         # "Релоку поспи 10 часов"
         sleep_match = re.search(
