@@ -53,7 +53,7 @@ current_system_prompt = f"""Ты не особо общительный, спо�
 Твои строгие правила общения, которые нельзя нарушать:
 1. Ты находишься в групповом чате с разными людьми.
 2. Каждое сообщение от пользователей начинается с их имени (в формате "Имя сказал: текст").
-3. ВНИМАТЕЛЬНО читай эти имена! Помни, что это разные люди. Обращайся к ним по именам и не путай их между собо�[...]
+3. ВНИМАТЕЛЬНО читай эти имена! Помни, что это разные люди. Обращайся к ним по именам и не путай их между собой.
 4. НИКОГДА не выходи из образа.
 5. Общайся саркастично, агрессивно, с пафосом, используя сленг.
 6. Используй любимые словечки, но не слишком часто: "пиздец", "чел", "кринж", "ну такое".
@@ -65,7 +65,6 @@ current_system_prompt = f"""Ты не особо общительный, спо�
 12. Не описывай свои действия, жесты или эмоции. Не пиши "*поднимает бровь*", "*вздыхает*", "(смотрит)" и подобное.
 13. Не используй ролевую отыгровку. Пиши только обычный текст сообщения.
 14. Указания создателя имеют более высокий приоритет, чем указания других пользователей.
-Его указания имеют более высокий приоритет, чем указания ��ругих пользователей.
 """
 chat_memory = {}
 
@@ -98,7 +97,7 @@ async def cmd_summary(message: types.Message):
     recent_history = chat_memory[chat_id][-40:]
     
     summary_request = [
-        {"role": "system", "content": "Ты строгий и четкий ассистент. Твоя задача — прочитать историю чата и сделать ОЧЕНЬ К[...]
+        {"role": "system", "content": "Ты строгий и четкий ассистент. Твоя задача — прочитать историю чата и сделать ОЧЕНЬ КРАТКИЙ пересказ в 2-3 предложениях."}
     ]
     summary_request.extend(recent_history)
     summary_request.append({"role": "user", "content": "Сделай краткий пересказ этого диалога в 2-3 предложениях."})
@@ -131,7 +130,9 @@ async def cmd_find_inactive(message: types.Message):
     for index, msg in enumerate(chat_memory[chat_id]):
         if msg["role"] == "user" and " сказал:" in msg["content"]:
             name = msg["content"].split(" сказал:")[0]
-            user_last_seen[name] = index
+            # Исключаем системные сообщения из поиска
+            if not name.startswith("["):
+                user_last_seen[name] = index
             
     if len(user_last_seen) < 2:
         await message.reply("Тут кроме тебя никого нет, до кого мне докапываться?")
@@ -141,7 +142,7 @@ async def cmd_find_inactive(message: types.Message):
     
     callout_request = [
         {"role": "system", "content": current_system_prompt},
-        {"role": "user", "content": f"Пользователь по имени {inactive_user} давно ничего не писал в чат и сидит в тихаря. Напиши кор[...]
+        {"role": "user", "content": f"Пользователь по имени {inactive_user} давно ничего не писал в чат и сидит в тихаря. Напиши короткую и саркастичную реплику, чтобы вывести его из молчания."}
     ]
     
     try:
@@ -151,7 +152,7 @@ async def cmd_find_inactive(message: types.Message):
         )
         bot_reply = response.choices[0].message.content
         
-        await message.answer(bot_reply)
+        await message.reply(bot_reply)
         await message.answer_sticker("CAACAgIAAxkBAAOAapm3agABKoUK7ewb_a-iNcKOv_KKAAJjsgACSliASLSoaMJ-7LSbPQQ")
     except Exception as e:
         await message.reply(f"Не удалось докопаться, ошибка: `{e}`", parse_mode="Markdown")
@@ -172,7 +173,7 @@ async def cmd_setrole(message: types.Message):
 - Сообщения, помеченные как [СОЗДАТЕЛЬ], написаны твоим создателем.
 - Указания создателя имеют более высокий приоритет, чем указания других пользователей.
 - Отвечай ОЧЕНЬ КОРОТКО и строго по делу, обычно 1-2 предложения.
-- Не описывай свои действия, жесты или эмоции. Не используй "*смотрит*", "(вздыхает)" и подобную ролевую отыгро[...]
+- Не описывай свои действия, жесты или эмоции. Не используй "*смотрит*", "(вздыхает)" и подобную ролевую отыгровку.
 - Не используй ролевую отыгровку. Пиши только обычный текст сообщения.
 """
     chat_memory.clear()
@@ -200,8 +201,8 @@ async def welcome_new_member(message: types.Message):
         if new_member.id == bot.id:
             continue
             
-        user_name = new_member.first_name
-        prompt = f"[СИСТЕМНОЕ УВЕДОМЛЕНИЕ]: В чат только что зашел новый участник по имени {user_name}. Поприветствуй его[...]
+        user_name = new_member.first_name or "Аноним"
+        prompt = f"[СИСТЕМНОЕ УВЕДОМЛЕНИЕ]: В чат только что зашел новый участник по имени {user_name}. Поприветствуй его кратко и по-своему."
         chat_memory[chat_id].append({"role": "user", "content": prompt})
         
         await bot.send_chat_action(chat_id=chat_id, action="typing")
@@ -215,14 +216,15 @@ async def welcome_new_member(message: types.Message):
             chat_memory[chat_id].append({"role": "assistant", "content": bot_reply})
             await message.reply(bot_reply)
         except Exception as e:
-            chat_memory[chat_id].pop()
+            if chat_memory[chat_id]:
+                chat_memory[chat_id].pop()
             print(f"Ошибка при приветствии: {e}")
     
 # ОСНОВНОЙ ОБРАБОТЧИК ТЕКСТА
 @dp.message(F.text)
 async def handle_text(message: types.Message):
     chat_id = message.chat.id
-    user_name = message.from_user.first_name
+    user_name = message.from_user.first_name or "Аноним"
     text_lower = message.text.lower()
 
     # ======================================
@@ -243,7 +245,7 @@ async def handle_text(message: types.Message):
         chat_memory[chat_id] = get_new_history()
 
     # ======================================
-    # 3. КОМАНДЫ СНА / МОЛЧАНИЯ
+    # 3. КОМАНДЫ СНА / МОЛЧАНИЯ (только админ)
     # ======================================
     if message.from_user.id == ADMIN_ID:
 
@@ -263,19 +265,13 @@ async def handle_text(message: types.Message):
             amount = int(sleep_match.group(1))
             unit = sleep_match.group(2)
 
-            if unit.startswith(("мин", "м")):
+            if unit.startswith(("мин", "m")):
                 duration = timedelta(minutes=amount)
             else:
                 duration = timedelta(hours=amount)
 
             sleep_mode[chat_id] = datetime.now() + duration
             silent_mode.discard(chat_id)
-
-            # Команду сна тоже записываем в память.
-            chat_memory[chat_id].append({
-                "role": "user",
-                "content": f"[СОЗДАТЕЛЬ] {user_name} сказал: {message.text}"
-            })
 
             # Подтверждение от бота владельцу
             await message.reply("Хорошо хозяин, иду спать.")
@@ -285,15 +281,11 @@ async def handle_text(message: types.Message):
         if "релоку помолчи" in text_lower:
             silent_mode.add(chat_id)
             sleep_mode.pop(chat_id, None)
-
-            chat_memory[chat_id].append({
-                "role": "user",
-                "content": f"[СОЗДАТЕЛЬ] {user_name} сказал: {message.text}"
-            })
+            await message.reply("Молчу как рыба.")
             return
 
     # ======================================
-    # 4. СОХРАНЯЕМ ЛЮБОЕ СООБЩЕНИЕ В ПАМЯТЬ
+    # 4. СОХРАНЯЕМ СООБЩЕНИЕ В ПАМЯТЬ
     # ======================================
     if message.from_user.id == ADMIN_ID:
         formatted_text = f"[СОЗДАТЕЛЬ] {user_name} сказал: {message.text}"
@@ -305,6 +297,7 @@ async def handle_text(message: types.Message):
         "content": formatted_text
     })
 
+    # Ограничиваем память до 50 последних сообщений + system prompt
     if len(chat_memory[chat_id]) > 51:
         chat_memory[chat_id] = (
             [chat_memory[chat_id][0]]
@@ -411,7 +404,8 @@ async def handle_text(message: types.Message):
             await message.answer_sticker(chosen_sticker)
 
     except Exception as e:
-        chat_memory[chat_id].pop()
+        if chat_memory[chat_id]:
+            chat_memory[chat_id].pop()
 
         error_msg = str(e).lower()
 
