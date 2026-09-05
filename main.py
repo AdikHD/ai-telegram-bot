@@ -39,7 +39,7 @@ BOT_TOKEN = os.environ.get('BOT_TOKEN')
 OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
 
 ADMIN_ID = 8503497111
-ALLOWED_GROUP_IDS = [-1004373810797, -1003970909380] # Список разрешенных групп
+ALLOWED_GROUP_IDS = [-1004373810797, -1003970909380, -1003725485988] # Список разрешенных групп
 
 client = AsyncOpenAI(
     base_url="https://openrouter.ai/api/v1",
