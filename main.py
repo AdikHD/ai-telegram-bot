@@ -9,6 +9,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from openai import AsyncOpenAI
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart, Command
+import motor.motor_asyncio 
 
 # ==========================================
 # 1. МИНИ-СЕРВЕР
@@ -33,13 +34,21 @@ def keep_alive():
 threading.Thread(target=keep_alive, daemon=True).start()
 
 # ==========================================
-# 2. НАСТРОЙКИ
+# 2. НАСТРОЙКИ (ПОЛНОСТЬЮ СКРЫТЫ)
 # ==========================================
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
+MONGO_URI = os.environ.get('MONGO_URI')
 
-ADMIN_ID = 8503497111
-ALLOWED_GROUP_IDS = [-1004373810797, -1003970909380, -1003725485988] # Список разрешенных групп
+# Безопасное получение ID (без хардкода)
+admin_id_str = os.environ.get('ADMIN_ID', '0')
+ADMIN_ID = int(admin_id_str)
+
+allowed_groups_str = os.environ.get('ALLOWED_GROUP_IDS', '')
+if allowed_groups_str:
+    ALLOWED_GROUP_IDS = [int(x.strip()) for x in allowed_groups_str.split(',')]
+else:
+    ALLOWED_GROUP_IDS = []
 
 client = AsyncOpenAI(
     base_url="https://openrouter.ai/api/v1",
@@ -48,6 +57,11 @@ client = AsyncOpenAI(
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
+
+# Подключение к MongoDB
+db_cluster = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI)
+db = db_cluster.reloku_db
+collection = db.chat_history
 
 current_system_prompt = f"""Ты не особо общительный, спокойный. Тебя зовут Reloku.
 Твои строгие правила общения, которые нельзя нарушать:
@@ -68,28 +82,42 @@ current_system_prompt = f"""Ты не особо общительный, спо�
 """
 chat_memory = {}
 
-# Сонный режим: chat_id -> время пробуждения
 sleep_mode = {}
-
-# Бессрочный режим молчания
 silent_mode = set()
 
 def get_new_history():
     return [{"role": "system", "content": current_system_prompt}]
 
 # ==========================================
+# БЛОК: СИНХРОНИЗАЦИЯ С MONGODB
+# ==========================================
+async def ensure_memory(chat_id):
+    if chat_id not in chat_memory:
+        data = await collection.find_one({"chat_id": chat_id})
+        if data and "messages" in data:
+            chat_memory[chat_id] = data["messages"]
+        else:
+            chat_memory[chat_id] = get_new_history()
+
+async def save_memory(chat_id):
+    await collection.update_one(
+        {"chat_id": chat_id},
+        {"$set": {"messages": chat_memory[chat_id]}},
+        upsert=True
+    )
+
+# ==========================================
 # 3. ЛОГИКА АДМИНА И СПЕЦ-ФУНКЦИИ
 # ==========================================
-
-# КРАТКИЙ ПЕРЕСКАЗ ЧАТА
 @dp.message(F.text.lower().contains("релоку пересказ")) 
 async def cmd_summary(message: types.Message):
     chat_id = message.chat.id
-    
     if chat_id not in ALLOWED_GROUP_IDS and chat_id != ADMIN_ID:
         return
         
-    if chat_id not in chat_memory or len(chat_memory[chat_id]) < 5:
+    await ensure_memory(chat_id)
+        
+    if len(chat_memory[chat_id]) < 5:
         await message.reply("Мы еще недостаточно пообщались, чтобы я делал пересказ. Напишите еще что-нибудь!")
         return
         
@@ -112,15 +140,15 @@ async def cmd_summary(message: types.Message):
     except Exception as e:
         await message.reply(f"Не удалось сделать пересказ, возможно сервер перегружен: `{e}`", parse_mode="Markdown")
 
-# ПОИСК НЕАКТИВА (ДОКОПАТЬСЯ ДО МОЛЧУНА)
 @dp.message(F.text.lower().contains("поиск неактива"))
 async def cmd_find_inactive(message: types.Message):
     chat_id = message.chat.id
-    
     if chat_id not in ALLOWED_GROUP_IDS and chat_id != ADMIN_ID:
         return
 
-    if chat_id not in chat_memory or len(chat_memory[chat_id]) < 5:
+    await ensure_memory(chat_id)
+
+    if len(chat_memory[chat_id]) < 5:
         await message.reply("Я пока не запомнил, кто тут общается. Пусть напишут хоть пару слов!")
         return
 
@@ -130,7 +158,6 @@ async def cmd_find_inactive(message: types.Message):
     for index, msg in enumerate(chat_memory[chat_id]):
         if msg["role"] == "user" and " сказал:" in msg["content"]:
             name = msg["content"].split(" сказал:")[0]
-            # Исключаем системные сообщения из поиска
             if not name.startswith("["):
                 user_last_seen[name] = index
             
@@ -151,7 +178,6 @@ async def cmd_find_inactive(message: types.Message):
             messages=callout_request
         )
         bot_reply = response.choices[0].message.content
-        
         await message.reply(bot_reply)
         await message.answer_sticker("CAACAgIAAxkBAAOAapm3agABKoUK7ewb_a-iNcKOv_KKAAJjsgACSliASLSoaMJ-7LSbPQQ")
     except Exception as e:
@@ -177,6 +203,7 @@ async def cmd_setrole(message: types.Message):
 - Не используй ролевую отыгровку. Пиши только обычный текст сообщения.
 """
     chat_memory.clear()
+    await collection.drop()
     await message.reply(f"Успешно! Моя новая базовая установка:\n{current_system_prompt}")
 
 # ==========================================
@@ -186,16 +213,16 @@ async def cmd_setrole(message: types.Message):
 async def cmd_start(message: types.Message):
     chat_id = message.chat.id
     chat_memory[chat_id] = get_new_history()
+    await save_memory(chat_id)
     await message.answer("Бот запущен!")
 
-# ПРИВЕТСТВИЕ НОВИЧКОВ
 @dp.message(F.new_chat_members)
 async def welcome_new_member(message: types.Message):
     chat_id = message.chat.id
     if chat_id not in ALLOWED_GROUP_IDS and chat_id != ADMIN_ID:
         return
-    if chat_id not in chat_memory:
-        chat_memory[chat_id] = get_new_history()
+        
+    await ensure_memory(chat_id)
 
     for new_member in message.new_chat_members:
         if new_member.id == bot.id:
@@ -204,6 +231,7 @@ async def welcome_new_member(message: types.Message):
         user_name = new_member.first_name or "Аноним"
         prompt = f"[СИСТЕМНОЕ УВЕДОМЛЕНИЕ]: В чат только что зашел новый участник по имени {user_name}. Поприветствуй его кратко и по-своему."
         chat_memory[chat_id].append({"role": "user", "content": prompt})
+        await save_memory(chat_id)
         
         await bot.send_chat_action(chat_id=chat_id, action="typing")
         
@@ -214,126 +242,77 @@ async def welcome_new_member(message: types.Message):
             )
             bot_reply = response.choices[0].message.content
             chat_memory[chat_id].append({"role": "assistant", "content": bot_reply})
+            await save_memory(chat_id)
             await message.reply(bot_reply)
         except Exception as e:
             if chat_memory[chat_id]:
                 chat_memory[chat_id].pop()
+                await save_memory(chat_id)
             print(f"Ошибка при приветствии: {e}")
     
-# ОСНОВНОЙ ОБРАБОТЧИК ТЕКСТА
 @dp.message(F.text)
 async def handle_text(message: types.Message):
     chat_id = message.chat.id
     user_name = message.from_user.first_name or "Аноним"
     text_lower = message.text.lower()
 
-    # ======================================
-    # 1. ЗАЩИТА ОТ ЧУЖИХ ГРУПП
-    # ======================================
     if chat_id not in ALLOWED_GROUP_IDS and chat_id != ADMIN_ID:
         if message.chat.type in ['group', 'supergroup']:
-            await message.answer(
-                "Мой создатель запретил мне работать в чужих группах. Прощайте!"
-            )
+            await message.answer("Мой создатель запретил мне работать в чужих группах. Прощайте!")
             await bot.leave_chat(chat_id)
         return
 
-    # ======================================
-    # 2. СОЗДАЕМ ПАМЯТЬ
-    # ======================================
-    if chat_id not in chat_memory:
-        chat_memory[chat_id] = get_new_history()
+    await ensure_memory(chat_id)
 
-    # ======================================
-    # 3. КОМАНДЫ СНА / МОЛЧАНИЯ (только админ)
-    # ======================================
     if message.from_user.id == ADMIN_ID:
-
         if "релоку проснись" in text_lower:
             sleep_mode.pop(chat_id, None)
             silent_mode.discard(chat_id)
             await message.reply("Я проснулся.")
             return
 
-        # "Релоку поспи 10 часов"
-        sleep_match = re.search(
-            r'релоку\s+поспи\s+(\d+)\s*(час(?:а|ов)?|ч|мин(?:ут|уты)?|м)',
-            text_lower
-        )
-
+        sleep_match = re.search(r'релоку\s+поспи\s+(\d+)\s*(час(?:а|ов)?|ч|мин(?:ут|уты)?|м)', text_lower)
         if sleep_match:
             amount = int(sleep_match.group(1))
             unit = sleep_match.group(2)
-
-            if unit.startswith(("мин", "m")):
-                duration = timedelta(minutes=amount)
-            else:
-                duration = timedelta(hours=amount)
-
+            duration = timedelta(minutes=amount) if unit.startswith(("мин", "m")) else timedelta(hours=amount)
             sleep_mode[chat_id] = datetime.now() + duration
             silent_mode.discard(chat_id)
-
-            # Подтверждение от бота владельцу
             await message.reply("Хорошо хозяин, иду спать.")
             return
 
-        # "Релоку помолчи пока не позову"
         if "релоку помолчи" in text_lower:
             silent_mode.add(chat_id)
             sleep_mode.pop(chat_id, None)
             await message.reply("Молчу как рыба.")
             return
 
-    # ======================================
-    # 4. СОХРАНЯЕМ СООБЩЕНИЕ В ПАМЯТЬ
-    # ======================================
     if message.from_user.id == ADMIN_ID:
         formatted_text = f"[СОЗДАТЕЛЬ] {user_name} сказал: {message.text}"
     else:
         formatted_text = f"{user_name} сказал: {message.text}"
 
-    chat_memory[chat_id].append({
-        "role": "user",
-        "content": formatted_text
-    })
+    chat_memory[chat_id].append({"role": "user", "content": formatted_text})
 
-    # Ограничиваем память до 50 последних сообщений + system prompt
     if len(chat_memory[chat_id]) > 51:
-        chat_memory[chat_id] = (
-            [chat_memory[chat_id][0]]
-            + chat_memory[chat_id][-50:]
-        )
+        chat_memory[chat_id] = [chat_memory[chat_id][0]] + chat_memory[chat_id][-50:]
+        
+    await save_memory(chat_id)
 
-    # ======================================
-    # 5. ПРОВЕРЯЕМ СОН / МОЛЧАНИЕ
-    # ======================================
-
-    # Бессрочное молчание: сообщения уже записаны в память.
     if chat_id in silent_mode:
         if "релоку" not in text_lower:
             return
-
-        # Любое обращение "Релоку" будит бота.
         silent_mode.discard(chat_id)
 
-    # Сон на определенное время.
     if chat_id in sleep_mode:
         if datetime.now() < sleep_mode[chat_id]:
             return
-
         sleep_mode.pop(chat_id, None)
 
-    # ======================================
-    # 6. ФИЛЬТР ВНИМАНИЯ
-    # ======================================
     should_reply = False
-
     if message.from_user.id == ADMIN_ID:
         should_reply = True
-    elif (
-        message.reply_to_message
-        and message.reply_to_message.from_user.id == bot.id
-    ):
+    elif message.reply_to_message and message.reply_to_message.from_user.id == bot.id:
         should_reply = True
     elif "@Relokus_bot" in text_lower:
         should_reply = True
@@ -342,33 +321,17 @@ async def handle_text(message: types.Message):
     elif len(text_lower.split()) > 20:
         should_reply = True
     else:
-        triggers = [
-            "релоку",
-            "reloku",
-            "привет",
-            "салам",
-            "пр",
-            "ку",
-            "здарова",
-            "здравствуй",
-            "хай",
-        ]
-
+        triggers = ["релоку", "reloku", "привет", "салам", "пр", "ку", "здарова", "здравствуй", "хай"]
         clean_text = text_lower
         for char in ",.!?:;()":
             clean_text = clean_text.replace(char, "")
-
         words = clean_text.split()
-
         if any(word in words for word in triggers):
             should_reply = True
 
     if not should_reply:
         return
 
-    # ======================================
-    # 7. ОТВЕТ БОТА
-    # ======================================
     await bot.send_chat_action(chat_id=chat_id, action="typing")
 
     try:
@@ -376,17 +339,12 @@ async def handle_text(message: types.Message):
             model="openrouter/free",
             messages=chat_memory[chat_id]
         )
-
         bot_reply = response.choices[0].message.content
-
-        chat_memory[chat_id].append({
-            "role": "assistant",
-            "content": bot_reply
-        })
-
+        chat_memory[chat_id].append({"role": "assistant", "content": bot_reply})
+        
+        await save_memory(chat_id)
         await message.reply(bot_reply)
 
-        # Шанс кинуть стикер после ответа
         if random.random() < 0.4:
             stickers = [
                 "CAACAgIAAxkBAANmaplx2KTRP6UMssFeXiFmQKXI6TMAAj-bAAK-mWlIMk6ipVBFGmY9BA",
@@ -399,29 +357,19 @@ async def handle_text(message: types.Message):
                 "CAACAgIAAxkBAAN6apm2USN1reKTV5pR70zXiAqgz8cAAp6pAAK84alI08F59A73WLM9BA",
                 "CAACAgIAAxkBAAN4apm2J3ZIQOFC8_TYjbLeCDWE20UAAsaaAAJ699FLdRBffT1WSbE9BA",
             ]
-
             chosen_sticker = random.choice(stickers)
             await message.answer_sticker(chosen_sticker)
 
     except Exception as e:
         if chat_memory[chat_id]:
             chat_memory[chat_id].pop()
+            await save_memory(chat_id)
 
         error_msg = str(e).lower()
-
-        if (
-            "402" in error_msg
-            or "429" in error_msg
-            or "limit" in error_msg
-            or "quota" in error_msg
-        ):
+        if "402" in error_msg or "429" in error_msg or "limit" in error_msg or "quota" in error_msg:
             await message.reply("Я устал, пойду отдохну 💤")
         else:
-            await message.reply(
-                f"Произошла техническая ошибка:\n`{e}`",
-                parse_mode="Markdown"
-            )
-
+            await message.reply(f"Произошла техническая ошибка:\n`{e}`", parse_mode="Markdown")
 
 async def main():
     print("Групповой ИИ-бот запущен!")
@@ -429,3 +377,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+                
