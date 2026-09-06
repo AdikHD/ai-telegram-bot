@@ -125,7 +125,7 @@ async def cmd_summary(message: types.Message):
     recent_history = chat_memory[chat_id][-40:]
     
     summary_request = [
-        {"role": "system", "content": "Ты строгий и четкий ассистент. Твоя задача — прочитать историю чата и сделать ОЧЕНЬ КРАТКИЙ пересказ в 2-3 предложениях."}
+        {"role": "system", "content": "Ты строгий и четкий ассистент. Твоя задача — прочитать историю чата и сделать ОЧЕНЬ КРАТКИЙ пересказ в 2-3 предложениях."},
     ]
     summary_request.extend(recent_history)
     summary_request.append({"role": "user", "content": "Сделай краткий пересказ этого диалога в 2-3 предложениях."})
@@ -135,7 +135,7 @@ async def cmd_summary(message: types.Message):
             model="openrouter/free",
             messages=summary_request
         )
-        summary_text = response.choices[0].message.content
+        summary_text = response.choices[0].message.content or "Нейросеть заглючила, чел. Попробуй позже."
         await message.reply(f"📝 **Краткий пересказ последних событий:**\n\n{summary_text}", parse_mode="Markdown")
     except Exception as e:
         await message.reply(f"Не удалось сделать пересказ, возможно сервер перегружен: `{e}`", parse_mode="Markdown")
@@ -169,7 +169,7 @@ async def cmd_find_inactive(message: types.Message):
     
     callout_request = [
         {"role": "system", "content": current_system_prompt},
-        {"role": "user", "content": f"Пользователь по имени {inactive_user} давно ничего не писал в чат и сидит в тихаря. Напиши короткую и саркастичную реплику, чтобы вывести его из молчания."}
+        {"role": "user", "content": f"Пользователь по имени {inactive_user} давно ничего не писал в чат и сидит в тихаря. Напиши короткий и саркастичный вызов, чтобы задеть его."},
     ]
     
     try:
@@ -177,7 +177,7 @@ async def cmd_find_inactive(message: types.Message):
             model="openrouter/free",
             messages=callout_request
         )
-        bot_reply = response.choices[0].message.content
+        bot_reply = response.choices[0].message.content or "Ладно, лень ругать молчунов."
         await message.reply(bot_reply)
         await message.answer_sticker("CAACAgIAAxkBAAOAapm3agABKoUK7ewb_a-iNcKOv_KKAAJjsgACSliASLSoaMJ-7LSbPQQ")
     except Exception as e:
@@ -229,7 +229,7 @@ async def welcome_new_member(message: types.Message):
             continue
             
         user_name = new_member.first_name or "Аноним"
-        prompt = f"[СИСТЕМНОЕ УВЕДОМЛЕНИЕ]: В чат только что зашел новый участник по имени {user_name}. Поприветствуй его кратко и по-своему."
+        prompt = f"[СИСТЕМНОЕ УВЕДОМЛЕНИЕ]: В чат только что зашел новый участник по имени {user_name}. Поприветствуй его коротко и саркастично."
         chat_memory[chat_id].append({"role": "user", "content": prompt})
         await save_memory(chat_id)
         
@@ -240,7 +240,7 @@ async def welcome_new_member(message: types.Message):
                 model="openrouter/free",
                 messages=chat_memory[chat_id]
             )
-            bot_reply = response.choices[0].message.content
+            bot_reply = response.choices[0].message.content or "Добро пожаловать, я устал приветствовать."
             chat_memory[chat_id].append({"role": "assistant", "content": bot_reply})
             await save_memory(chat_id)
             await message.reply(bot_reply)
@@ -339,7 +339,7 @@ async def handle_text(message: types.Message):
             model="openrouter/free",
             messages=chat_memory[chat_id]
         )
-        bot_reply = response.choices[0].message.content
+        bot_reply = response.choices[0].message.content or "Пиздец, нейросеть отвалилась."
         chat_memory[chat_id].append({"role": "assistant", "content": bot_reply})
         
         await save_memory(chat_id)
@@ -377,4 +377,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-                
